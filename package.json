@@ -1,0 +1,36 @@
+{
+  "name": "web-vr-extension",
+  "displayName": "Web VR Player",
+  "version": "0.1.0",
+  "description": "Browser extension that turns any <video> element into VR playback mode using Three.js",
+  "author": "wuyuan",
+  "scripts": {
+    "dev": "plasmo dev",
+    "build": "plasmo build",
+    "package": "plasmo package"
+  },
+  "dependencies": {
+    "plasmo": "^0.90.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "typescript": "^5.6.3"
+  },
+  "manifest": {
+    "permissions": ["activeTab", "scripting"],
+    "host_permissions": ["<all_urls>"],
+    "action": {
+      "default_icon": {
+        "16": "icon16.plasmo.png",
+        "32": "icon32.plasmo.png",
+        "48": "icon48.plasmo.png",
+        "64": "icon64.plasmo.png",
+        "128": "icon128.plasmo.png"
+      }
+    }
+  }
+}

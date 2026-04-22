@@ -162,4 +162,46 @@ chrome.action.onClicked.addListener(async (tab) => {
   })
 })
 
+// --- Handle "Enter VR" button clicks from content script ---
+chrome.runtime.onMessage.addListener((message, sender) => {
+  if (message.action !== "enter-vr" || !sender.tab?.id) return
+
+  const tabId = sender.tab.id
+  const frameId = sender.frameId ?? 0
+  const selector = message.selector as string
+
+  ;(async () => {
+    // Fullscreen iframe if needed
+    if (frameId !== 0) {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        world: "MAIN",
+        func: FULLSCREEN_IFRAME_FUNC,
+      })
+    }
+
+    // Inject VR — cleanup existing VR first if active in this frame
+    await chrome.scripting.executeScript({
+      target: { tabId, frameIds: [frameId] },
+      world: "MAIN",
+      func: (code: string, sel: string, m: string) => {
+        if (
+          (window as any).__webVRActive &&
+          typeof (window as any).__webVRCleanup === "function"
+        ) {
+          ;(window as any).__webVRCleanup()
+        }
+        const cfg = { selector: sel, mode: m }
+        ;(window as any).__webVRConfig = cfg
+        if (typeof (window as any).__webVRInit === "function") {
+          ;(window as any).__webVRInit(cfg)
+        } else {
+          ;(0, eval)(code)
+        }
+      },
+      args: [vrCode, selector, "360"],
+    })
+  })()
+})
+
 export {}

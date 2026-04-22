@@ -37,7 +37,8 @@ function initVR(config: VRConfig) {
   video.style.display = "none"
 
   // --- Three.js ---
-  const renderer = new THREE.WebGLRenderer({ antialias: true })
+  // Match competitor's config exactly: powerPreference + capped pixelRatio
+  const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' })
   renderer.setPixelRatio(window.devicePixelRatio)
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -46,10 +47,12 @@ function initVR(config: VRConfig) {
   const scene = new THREE.Scene()
   const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000)
 
+  // Use VideoTexture directly — modern browsers have hardware-accelerated
+  // paths that can upload video frames to GPU with zero CPU copies.
+  // Intermediate Canvas forces CPU-side blit + extra upload, which is slower.
   const texture = new THREE.VideoTexture(video)
-  texture.minFilter = THREE.LinearFilter
-  texture.magFilter = THREE.LinearFilter
   texture.colorSpace = THREE.SRGBColorSpace
+  texture.generateMipmaps = false
 
   function buildScene(mode: "360" | "cinema") {
     while (scene.children.length > 0) scene.remove(scene.children[0])
@@ -100,6 +103,7 @@ function initVR(config: VRConfig) {
     lat = Math.max(-85, Math.min(85, lat))
     prevX = e.clientX
     prevY = e.clientY
+    needRender = true
   })
   window.addEventListener("mouseup", () => {
     isDragging = false
@@ -109,6 +113,7 @@ function initVR(config: VRConfig) {
     e.preventDefault()
     camera.fov = Math.max(20, Math.min(120, camera.fov + e.deltaY * 0.05))
     camera.updateProjectionMatrix()
+    needRender = true
   }, { passive: false })
 
   // --- Controls bar ---
@@ -244,15 +249,22 @@ function initVR(config: VRConfig) {
   container.addEventListener("wheel", () => { showFovLabel() }, { passive: true })
 
   // --- Render loop ---
-  function animate() {
+  // Match competitor's strategy: 60fps cap + dirty rendering
+  let needRender = true
+  let lastFrame = 0
+  let lastUIUpdate = 0
+
+  function animate(now: number) {
     animationId = requestAnimationFrame(animate)
-    // Update progress bar
-    if (isFinite(video.duration) && video.duration > 0) {
-      progressFill.style.width = `${(video.currentTime / video.duration) * 100}%`
-      timeLabel.textContent = `${formatTime(video.currentTime)} / ${formatTime(video.duration)}`
-    }
+    if (document.hidden) return
+
+    // Cap at ~60fps
+    if (now - lastFrame < 16.6) return
+    lastFrame = now
+
     const phi = THREE.MathUtils.degToRad(90 - lat)
     const theta = THREE.MathUtils.degToRad(lon)
+
     if (currentMode === "360") {
       camera.lookAt(500 * Math.sin(phi) * Math.cos(theta), 500 * Math.cos(phi), 500 * Math.sin(phi) * Math.sin(theta))
     } else {
@@ -261,9 +273,28 @@ function initVR(config: VRConfig) {
       camera.position.z = 5 + 3 * Math.sin(phi) * Math.sin(theta)
       camera.lookAt(0, 2, -5)
     }
-    renderer.render(scene, camera)
+
+    // Update texture only when video is actively playing
+    if (!video.paused && video.readyState >= 2) {
+      texture.needsUpdate = true
+      needRender = true
+    }
+
+    // Update UI at 4Hz
+    if (now - lastUIUpdate > 250) {
+      lastUIUpdate = now
+      if (isFinite(video.duration) && video.duration > 0) {
+        progressFill.style.width = `${(video.currentTime / video.duration) * 100}%`
+        timeLabel.textContent = `${formatTime(video.currentTime)} / ${formatTime(video.duration)}`
+      }
+    }
+
+    if (needRender) {
+      renderer.render(scene, camera)
+      needRender = false
+    }
   }
-  animate()
+  animate(performance.now())
 
   // --- Resize ---
   function onResize() {
